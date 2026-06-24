@@ -62,6 +62,7 @@ from tp_mcp.tools import (
     tp_get_workout_types,
     tp_get_workouts,
     tp_list_athletes,
+    tp_list_notes,
     tp_log_metrics,
     tp_pair_workout,
     tp_refresh_auth,
@@ -81,6 +82,7 @@ from tp_mcp.tools import (
     tp_upload_workout_file,
     tp_validate_structure,
 )
+from tp_mcp.tools.events import EVENT_TYPES
 from tp_mcp.tools.workouts import SPORT_TYPE_MAP
 
 # Configure logging to stderr (stdout is used for MCP protocol)
@@ -127,6 +129,8 @@ RAW_STRUCTURE_DESCRIPTION = (
     "structure, polyline, primaryLengthMetric, primaryIntensityMetric, and "
     "primaryIntensityTargetOrRange."
 )
+WORKOUT_FEELING_DESCRIPTION = "TrainingPeaks feeling value (0-10)."
+WORKOUT_RPE_DESCRIPTION = "Rating of perceived exertion (RPE), 0-10."
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +227,8 @@ TOOLS = [
                     "description": "Workout subtype ID from tp_get_workout_types",
                 },
                 "tags": {"type": "string", "description": "Optional comma-separated tags"},
-                "feeling": {"type": "integer", "description": "Feeling score 0-10"},
-                "rpe": {"type": "integer", "description": "RPE score 1-10"},
+                "feeling": {"type": "integer", "description": WORKOUT_FEELING_DESCRIPTION},
+                "rpe": {"type": "integer", "description": WORKOUT_RPE_DESCRIPTION},
             },
             "required": ["date", "sport", "title"],
         },
@@ -251,8 +255,8 @@ TOOLS = [
                 "tags": {"type": "string"},
                 "athlete_comment": {"type": "string"},
                 "coach_comment": {"type": "string"},
-                "feeling": {"type": "integer", "description": "0-10"},
-                "rpe": {"type": "integer", "description": "1-10"},
+                "feeling": {"type": "integer", "description": WORKOUT_FEELING_DESCRIPTION},
+                "rpe": {"type": "integer", "description": WORKOUT_RPE_DESCRIPTION},
                 "structure": {
                     "type": ["object", "string"],
                     "description": STRUCTURE_DESCRIPTION,
@@ -715,13 +719,7 @@ TOOLS = [
             "properties": {
                 "name": {"type": "string"},
                 "date": {"type": "string", "description": "YYYY-MM-DD"},
-                "event_type": {
-                    "type": "string",
-                    "description": (
-                        "e.g. Triathlon, MultisportTriathlon, RoadRunning,"
-                        " RoadCycling, MountainBiking, OpenWaterSwimming, Other"
-                    ),
-                },
+                "event_type": {"type": "string", "enum": EVENT_TYPES},
                 "priority": {"type": "string", "enum": ["A", "B", "C"]},
                 "distance_km": {"type": "number"},
                 "ctl_target": {"type": "number"},
@@ -739,11 +737,19 @@ TOOLS = [
                 "event_id": {"type": "string"},
                 "name": {"type": "string"},
                 "date": {"type": "string"},
-                "event_type": {"type": "string"},
+                "event_type": {"type": "string", "enum": EVENT_TYPES},
                 "priority": {"type": "string", "enum": ["A", "B", "C"]},
                 "distance_km": {"type": "number"},
                 "ctl_target": {"type": "number"},
                 "description": {"type": "string"},
+                "workout_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": (
+                        "Workout IDs to attach to the event as its legs, in order "
+                        "(e.g. swim, T1, bike, T2, run). Replaces the existing list."
+                    ),
+                },
             },
             "required": ["event_id"],
         },
@@ -822,6 +828,18 @@ TOOLS = [
                 "comment": {"type": "string", "description": "Comment text"},
             },
             "required": ["note_id", "comment"],
+        },
+    ),
+    Tool(
+        name="tp_list_notes",
+        description="List calendar notes for a date range.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                "end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+            },
+            "required": ["start_date", "end_date"],
         },
     ),
     Tool(
@@ -922,8 +940,14 @@ TOOLS = [
             "properties": {
                 "library_id": {"type": "string"},
                 "name": {"type": "string"},
-                "sport_family_id": {"type": "integer"},
-                "sport_type_id": {"type": "integer"},
+                "sport_family_id": {
+                    "type": "integer",
+                    "description": "Sport ID (e.g. 2=Bike; see tp_get_workout_types)",
+                },
+                "sport_type_id": {
+                    "type": "integer",
+                    "description": "Sport subtype ID (e.g. 3=Road Bike)",
+                },
                 "duration_hours": {"type": "number"},
                 "tss": {"type": "number"},
                 "description": {"type": "string"},
@@ -1250,7 +1274,7 @@ async def _h_update_event(args):
         event_id=args["event_id"], name=args.get("name"), date=args.get("date"),
         event_type=args.get("event_type"), priority=args.get("priority"),
         distance_km=args.get("distance_km"), ctl_target=args.get("ctl_target"),
-        description=args.get("description"),
+        description=args.get("description"), workout_ids=args.get("workout_ids"),
     )
 
 @_handler("tp_delete_event")
@@ -1284,6 +1308,10 @@ async def _h_get_note_comments(args): return await tp_get_note_comments(note_id=
 @_handler("tp_add_note_comment")
 async def _h_add_note_comment(args):
     return await tp_add_note_comment(note_id=args["note_id"], comment=args["comment"])
+
+@_handler("tp_list_notes")
+async def _h_list_notes(args):
+    return await tp_list_notes(start_date=args["start_date"], end_date=args["end_date"])
 
 @_handler("tp_get_availability")
 async def _h_get_avail(args):

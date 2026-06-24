@@ -28,6 +28,9 @@ class TestTpGetWorkouts:
         assert "isError" not in result or not result.get("isError")
         assert result["count"] == 2
         assert len(result["workouts"]) == 2
+        # sport is resolved from workoutTypeValueId (Bike=2, Run=3)
+        assert result["workouts"][0]["sport"] == "Bike"
+        assert result["workouts"][1]["sport"] == "Run"
 
     @pytest.mark.asyncio
     async def test_get_workouts_exposes_planned_and_actual_tss(self, mock_api_responses):
@@ -211,6 +214,32 @@ class TestTpGetWorkout:
         assert "coach_comments" not in result
         assert "athlete_comments" not in result
         assert mock_instance.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_workout_includes_subjective_feedback_fields(self, mock_api_responses):
+        """Raw post-workout subjective fields from v6 payload are included in the result."""
+        workout_data = dict(mock_api_responses["workout_detail"])
+        workout_data.update({
+            "rpe": 7,
+            "feeling": 3,
+            "newComment": "Felt controlled.",
+            "hasPrivateWorkoutNoteForCaller": True,
+        })
+        workout_response = APIResponse(success=True, data=workout_data)
+        details_response = APIResponse(success=True, data={})
+
+        with patch("tp_mcp.tools.workouts.TPClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.ensure_athlete_id = AsyncMock(return_value=123)
+            mock_instance.get = AsyncMock(side_effect=[workout_response, details_response])
+            mock_client.return_value.__aenter__.return_value = mock_instance
+
+            result = await tp_get_workout("1001")
+
+        assert result["rpe"] == 7
+        assert result["feeling"] == 3
+        assert result["new_comment"] == "Felt controlled."
+        assert result["has_private_workout_note"] is True
 
     @pytest.mark.asyncio
     async def test_get_workout_not_found(self):
