@@ -92,7 +92,8 @@ class CreateWorkoutInput(BaseModel):
         if self.structure is not None and self.structured_workout is not None:
             raise ValueError("Provide only one of structure or structured_workout")
         if (
-            self.duration_minutes is None
+            self.sport != "DayOff"
+            and self.duration_minutes is None
             and self.structure is None
             and self.structured_workout is None
         ):
